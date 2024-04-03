@@ -1,125 +1,173 @@
 import pandas as pd
+import numpy as np
 import geopandas as gpd
-import seaborn as sns
-import matplotlib.pyplot as plt
-from dash import Dash, dcc, html
+import dash
+from dash import dcc
+from dash import html
 from dash.dependencies import Input, Output
+import plotly.express as px
 
-from dash import Dash, dcc, html
-from dash.dependencies import Input, Output
-import plotly.express as px  # 导入plotly.express来创建图表
 
 # 加载数据
-clean_data = pd.read_csv('data/clean_data.csv')  # 确保路径正确
+clean_data = pd.read_csv('data/clean_data.csv')
 nyc_boroughs = gpd.read_file('data/nyc_boroughs.geojson')
 uhf42_geo_path = 'data/UHF42.geo.json'
 uhf42_gdf = gpd.read_file(uhf42_geo_path)
 
-app = Dash(__name__)
 
-app.layout = html.Div([
-    html.H1("Pollutant Data Visualization"),
-    html.Div([
-        html.H3("Select Pollutant:"),
-        dcc.Dropdown(
-            id='pollutant-dropdown',
-            options=[
-                {'label': 'Nitrogen dioxide (NO2)', 'value': 'Nitrogen dioxide (NO2)'},
-                {'label': 'Fine particles (PM 2.5)', 'value': 'Fine particles (PM 2.5)'},
-                {'label': 'Ozone (O3)', 'value': 'Ozone (O3)'}
-            ],
-            value='Nitrogen dioxide (NO2)'
-        )
-    ]),
-    html.Div([
-        html.H3("Select Visualization Type:"),
-        dcc.RadioItems(
-            id='visualization-type',
-            options=[
-                {'label': 'Average Levels by Borough', 'value': 'borough'},
-                {'label': 'Average Levels by UHF42 Area', 'value': 'uhf42'},
-                {'label': 'Average Levels by Season and Borough', 'value': 'season'},
-                {'label': 'Average Levels by Year', 'value': 'year'}
-            ],
-            value='borough'
-        )
-    ]),
-    html.Div(id='output-graph')
+def plot_average_levels(pollutant_name, legend_label):
+    data = clean_data
+    column_name = 'Data Value'
+    pollutant_data = data[data['Name'] == pollutant_name]
+    avg_pollutant_by_name = pollutant_data.groupby('Geo Place Name')['Data Value'].mean().reset_index()
+    merged_data = nyc_boroughs.merge(avg_pollutant_by_name, how='left', left_on='name', right_on='Geo Place Name')
+    fig = px.choropleth_mapbox(merged_data, geojson=merged_data.geometry, locations=merged_data.index, color=column_name,
+                               color_continuous_scale="Viridis", range_color=(0, merged_data[column_name].max()),
+                               mapbox_style="carto-positron", zoom=9, center={"lat": 40.7128, "lon": -74.0059},
+                               opacity=0.5, labels={'Data Value': legend_label})
+    return fig
+
+def plot_average_levels_by_uhf42(pollutant_name, legend_label):
+    data = clean_data[clean_data['Name'] == pollutant_name]
+    avg_pollutant_by_uhf42 = data.groupby('Geo Place Name')['Data Value'].mean().reset_index()
+    merged_data = uhf42_gdf.merge(avg_pollutant_by_uhf42, how='left', left_on='GEONAME', right_on='Geo Place Name')
+    fig = px.choropleth_mapbox(merged_data, geojson=merged_data.geometry, locations=merged_data.index, color='Data Value',
+                               color_continuous_scale="Viridis", range_color=(0, merged_data['Data Value'].max()),
+                               mapbox_style="carto-positron", zoom=9, center={"lat": 40.7128, "lon": -74.0059},
+                               opacity=0.5, labels={'Data Value': legend_label})
+    return fig
+
+def plot_average_levels_by_season(pollutant_name, ylabel):
+    data = clean_data[clean_data['Name'] == pollutant_name]
+    data = data[data['Geo Type Name'] == 'Borough']
+    avg_pollutant_by_season_borough = data.groupby(['Season', 'Geo Place Name'])['Data Value'].mean().reset_index()
+    borough_order = avg_pollutant_by_season_borough.groupby('Geo Place Name')['Data Value'].mean().sort_values(ascending=False).index
+    fig = px.bar(avg_pollutant_by_season_borough, x='Geo Place Name', y='Data Value', color='Season', barmode='group',
+                 category_orders={'Geo Place Name': borough_order})
+    fig.update_layout(xaxis_title='Borough', yaxis_title=ylabel)
+    return fig
+
+def plot_average_levels_by_year(pollutant_name, ylabel):
+    data = clean_data[clean_data['Name'] == pollutant_name]
+    avg_pollutant_by_year = data.groupby('Year')['Data Value'].mean().reset_index()
+    fig = px.bar(avg_pollutant_by_year, x='Year', y='Data Value')
+    fig.update_layout(xaxis_title='Year', yaxis_title=ylabel)
+    return fig
+
+
+# 定义函数字典
+# function_dict = {
+#     'By Year': {
+#         'Asthma emergency department visits due to PM2.5': plot_average_levels_by_year,
+#         'Deaths due to PM2.5': plot_average_levels_by_year,
+#         'Cardiovascular hospitalizations due to PM2.5 (age 40+)': plot_average_levels_by_year,
+#         'Respiratory hospitalizations due to PM2.5 (age 20+)': plot_average_levels_by_year,
+#         'Boiler Emissions- Total PM2.5 Emissions': plot_average_levels_by_year
+#     },
+#     'By Season': {
+#         'Nitrogen dioxide (NO2)': plot_average_levels_by_season,
+#         'Fine particles (PM 2.5)': plot_average_levels_by_season
+#     },
+#     'By Borough': {
+#         'Nitrogen dioxide (NO2)': plot_average_levels,
+#         'Fine particles (PM 2.5)': plot_average_levels,
+#         'Ozone (O3)': plot_average_levels
+#     },
+#     'By UHF42': {
+#         'Nitrogen dioxide (NO2)': plot_average_levels_by_uhf42,
+#         'Fine particles (PM 2.5)': plot_average_levels_by_uhf42,
+#         'Ozone (O3)': plot_average_levels_by_uhf42
+#     }
+# }
+
+function_dict = {
+    'By Year': {
+        'Asthma emergency department visits due to PM2.5': plot_average_levels_by_year,
+        'Deaths due to PM2.5': plot_average_levels_by_year,
+        'Cardiovascular hospitalizations due to PM2.5 (age 40+)': plot_average_levels_by_year,
+        'Respiratory hospitalizations due to PM2.5 (age 20+)': plot_average_levels_by_year,
+        'Boiler Emissions- Total PM2.5 Emissions': plot_average_levels_by_year
+    },
+    'By Season': {
+        'Nitrogen dioxide (NO2)': plot_average_levels_by_season,
+        'Fine particles (PM 2.5)': plot_average_levels_by_season
+    },
+    'By Borough': {
+        'Nitrogen dioxide (NO2)': plot_average_levels,
+        'Fine particles (PM 2.5)': plot_average_levels,
+        'Ozone (O3)': plot_average_levels
+    },
+    'By UHF42': {
+        'Nitrogen dioxide (NO2)': plot_average_levels_by_uhf42,
+        'Fine particles (PM 2.5)': plot_average_levels_by_uhf42,
+        'Ozone (O3)': plot_average_levels_by_uhf42
+    }
+}
+
+
+app = dash.Dash(__name__)
+
+app.layout = html.Div(children=[
+    html.H1(children='NYC Air Pollution Visualization'),
+    html.Div(children='''
+        Select the chart category and content:
+    '''),
+    dcc.Dropdown(
+        id='chart-category',
+        options=[{'label': category, 'value': category} for category in function_dict.keys()],
+        value='By Year'
+    ),
+    dcc.Dropdown(
+        id='chart-content',
+        options=[],
+        value=None
+    ),
+    dcc.Graph(id='chart')
 ])
 
 @app.callback(
-    Output('output-graph', 'children'),
-    [Input('pollutant-dropdown', 'value'), Input('visualization-type', 'value')]
+    Output('chart-content', 'options'),
+    [Input('chart-category', 'value')]
 )
-def update_graph(pollutant_name, visualization_type):
-    # Convert pollutant name to match the column names in your dataset
-    # Assuming the pollutants are column names in your dataset
-    pollutant_col = {
-        'NO2': 'Nitrogen dioxide (NO2)',  # The key here should be the 'value' from the dropdown
-        'PM2.5': 'Fine particles (PM2.5)',
-        'O3': 'Ozone (O3)'
-    }.get(pollutant_name, 'NO2')
+def update_content_options(selected_category):
+    return [{'label': content, 'value': content} for content in function_dict[selected_category].keys()]
 
-    if visualization_type == 'borough':
-        # Assuming 'Geo Place Name' matches the 'name' in nyc_boroughs and you want to visualize 'Data Value'
-        data = clean_data[clean_data['Name'] == pollutant_col]
-        avg_pollutant_by_borough = data.groupby('Geo Place Name')['Data Value'].mean().reset_index()
-        fig = px.choropleth(
-            avg_pollutant_by_borough,
-            geojson=nyc_boroughs.geometry.__geo_interface__,
-            locations='Geo Place Name',
-            color='Data Value',
-            color_continuous_scale="Viridis",
-            featureidkey="properties.name"
-        )
-        fig.update_geos(fitbounds="locations", visible=False)
-
-    elif visualization_type == 'uhf42':
-        # Similarly, for UHF42 areas
-        data = clean_data[clean_data['Name'] == pollutant_col]
-        avg_pollutant_by_uhf42 = data.groupby('Geo Place Name')['Data Value'].mean().reset_index()
-        fig = px.choropleth(
-            avg_pollutant_by_uhf42,
-            geojson=uhf42_gdf.geometry.__geo_interface__,
-            locations='Geo Place Name',
-            color='Data Value',
-            color_continuous_scale="Viridis",
-            featureidkey="properties.GEONAME"
-        )
-        fig.update_geos(fitbounds="locations", visible=False)
-
-    elif visualization_type == 'season':
-        # Assuming there is a 'Season' column and 'Data Value' to visualize
-        data = clean_data[(clean_data['Name'] == pollutant_col) & (clean_data['Geo Type Name'] == 'Borough')]
-        fig = px.bar(
-            data,
-            x='Geo Place Name',
-            y='Data Value',
-            color='Season',
-            barmode='group'
-        )
-
-    elif visualization_type == 'year':
-        # Assuming there is a 'Year' column
-        data = clean_data[clean_data['Name'] == pollutant_col]
-        avg_pollutant_by_year = data.groupby('Year')['Data Value'].mean().reset_index()
-        fig = px.line(
-            avg_pollutant_by_year,
-            x='Year',
-            y='Data Value',
-            markers=True
-        )
-
-    # Update layout if necessary
-    fig.update_layout(
-        margin={"r":0,"t":0,"l":0,"b":0},
-        coloraxis_colorbar={
-            'title':'Average Level'
-        }
-    )
-
-    return dcc.Graph(figure=fig)  # Return a Dash Graph component
-
+@app.callback(
+    Output('chart', 'figure'),
+    [Input('chart-category', 'value'), Input('chart-content', 'value')]
+)
+def update_chart(selected_category, selected_content):
+    if selected_content is None:
+        return {}
+    else:
+        plot_function = function_dict[selected_category][selected_content]
+        if selected_category == 'By Year':
+            fig = plot_function(selected_content, selected_content)
+        elif selected_category == 'By Season':
+            if ') ' in selected_content:
+                pollutant_name, label = selected_content.split(') ')
+                pollutant_name = pollutant_name + ')'
+            else:
+                pollutant_name = selected_content
+                label = selected_content
+            fig = plot_function(pollutant_name, label)
+        elif selected_category == 'By Borough':
+            if ') ' in selected_content:
+                pollutant_name, label = selected_content.split(') ')
+                pollutant_name = pollutant_name + ')'
+            else:
+                pollutant_name = selected_content
+                label = selected_content
+            fig = plot_function(pollutant_name, label)
+        elif selected_category == 'By UHF42':
+            if ') ' in selected_content:
+                pollutant_name, label = selected_content.split(') ')
+                pollutant_name = pollutant_name + ')'
+            else:
+                pollutant_name = selected_content
+                label = selected_content
+            fig = plot_function(pollutant_name, label)
+        return fig
 
 if __name__ == '__main__':
     app.run_server(debug=True)
