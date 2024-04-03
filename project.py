@@ -1,35 +1,40 @@
 import dash
-from dash import html, dcc, Input, Output
+from dash import html, dcc
 import plotly.express as px
 import pandas as pd
+import geopandas as gpd
 
-# 假设我们已经有了一个名为clean_data的清洗过的DataFrame
-clean_data = pd.read_csv('data/clean_data.csv')
+# Load the data
+clean_data = pd.read_csv('data/clean_data.csv')  # Update this path
+with open('data/nyc_boroughs.geojson') as f:
+    nyc_boroughs_geojson = gpd.read_file(f)
+
+# Prepare the data
+no2_data = clean_data[clean_data['Name'] == 'Nitrogen dioxide (NO2)']
+avg_no2_by_borough = no2_data.groupby('Geo Place Name')['Data Value'].mean().reset_index()
+
+# Create the choropleth map
+fig = px.choropleth_mapbox(avg_no2_by_borough,
+                           geojson=nyc_boroughs_geojson,
+                           locations='Geo Place Name',
+                           featureidkey='properties.boro_name',
+                           color='Data Value',
+                           color_continuous_scale='Viridis',
+                           range_color=(0, 50),
+                           mapbox_style='carto-positron',
+                           zoom=9, center={'lat': 40.7, 'lon': -73.9},
+                           opacity=0.5,
+                           labels={'Data Value': 'Average NO2 Level'},
+                           title='Average NO2 Levels by Borough in NYC')
+# Set the title
+fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
 
 app = dash.Dash(__name__)
 
 app.layout = html.Div([
-    html.H1('污染物数据分析'),
-    dcc.Dropdown(
-        id='pollutant-selector',
-        options=[
-            {'label': '二氧化氮 (NO2)', 'value': 'NO2'},
-            {'label': '细颗粒物 (PM2.5)', 'value': 'PM2.5'},
-            {'label': '臭氧 (O3)', 'value': 'O3'}
-        ],
-        value='NO2'  # 默认值
-    ),
-    dcc.Graph(id='pollution-graph')
+    html.H1('Average NO2 Levels by Borough in NYC'),
+    dcc.Graph(id='no2-choropleth', figure=fig)
 ])
-
-@app.callback(
-    Output('pollution-graph', 'figure'),
-    Input('pollutant-selector', 'value')
-)
-def update_graph(selected_pollutant):
-    filtered_data = clean_data[clean_data['Name'] == selected_pollutant]
-    fig = px.line(filtered_data, x='Start_Date', y='Data Value', title=f'{selected_pollutant} Levels Over Time')
-    return fig
 
 if __name__ == '__main__':
     app.run_server(debug=True)
