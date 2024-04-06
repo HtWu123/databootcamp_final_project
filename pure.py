@@ -78,11 +78,27 @@ def plot_average_levels_by_year(data_name, ylabel):
     plt.xticks(rotation=45)
     plt.show()
 
-plot_average_levels_by_year('Asthma emergency department visits due to PM2.5', 'Average Asthma Emergency Department Visits')
-plot_average_levels_by_year('Deaths due to PM2.5', 'Average Deaths')
-plot_average_levels_by_year('Cardiovascular hospitalizations due to PM2.5 (age 40+)', 'Average Cardiovascular Hospitalizations')
-plot_average_levels_by_year('Respiratory hospitalizations due to PM2.5 (age 20+)', 'Average Respiratory Hospitalizations')
-plot_average_levels_by_year('Boiler Emissions- Total PM2.5 Emissions', 'Average Boiler Emissions')
+
+def plot_average_levels_by_years(pollutant_name, ylabel):
+    data = clean_data[clean_data['Name'] == pollutant_name]
+    data = data[data['Geo Type Name'] == 'Borough']
+    avg_pollutant_by_season_borough = data.groupby(['Year', 'Geo Place Name'])['Data Value'].mean().reset_index()
+    borough_order = avg_pollutant_by_season_borough.groupby('Geo Place Name')['Data Value'].mean().sort_values(ascending=False).index
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    sns.barplot(x='Geo Place Name', y='Data Value', hue='Year', data=avg_pollutant_by_season_borough, ax=ax, order=borough_order)
+    title = 'Average ' + pollutant_name + ' Levels by Year and Borough in NYC'
+    plt.title(title)
+    plt.xlabel('Borough')
+    plt.ylabel(ylabel)
+    plt.xticks(rotation=45)
+    plt.show()
+
+
+# plot_average_levels_by_year('Asthma emergency department visits due to PM2.5', 'Average Asthma Emergency Department Visits')
+# plot_average_levels_by_year('Deaths due to PM2.5', 'Average Deaths')
+# plot_average_levels_by_year('Cardiovascular hospitalizations due to PM2.5 (age 40+)', 'Average Cardiovascular Hospitalizations')
+# plot_average_levels_by_year('Respiratory hospitalizations due to PM2.5 (age 20+)', 'Average Respiratory Hospitalizations')
+# plot_average_levels_by_year('Boiler Emissions- Total PM2.5 Emissions', 'Average Boiler Emissions')
 
 
 # plot_average_levels_by_year('Fine particles (PM 2.5)', 'Average PM 2.5 Level (µg/m³)')
